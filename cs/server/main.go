@@ -7,8 +7,12 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net"
+	"time"
+
 	"github.com/dgrijalva/jwt-go"
-	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/mjafari98/go-auth/models"
 	"github.com/mjafari98/go-auth/pb"
 	"google.golang.org/grpc"
@@ -16,11 +20,6 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
-	"io/ioutil"
-	"log"
-	"net"
-	"net/http"
-	"time"
 )
 
 const (
@@ -75,7 +74,7 @@ func (manager *JWTManager) Generate(user *models.User) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES512, claims)
 
-	data, err := ioutil.ReadFile("cs/server/ecdsa-p521-private.pem")
+	data, err := ioutil.ReadFile("ecdsa-p521-private.pem")
 	if err != nil {
 		panic(err)
 	}
@@ -139,21 +138,40 @@ func (server *AuthServer) Login(ctx context.Context, credentials *pb.Credentials
 	return res, nil
 }
 
+type RegisterServer struct {
+	pb.UnimplementedRegisterServer
+}
+
+// func (u *models.User) BeforeCreate(tx *gorm.DB)(err error){
+
+// 	if u.Role.Name == "admin" {
+// 		return errors.New("invalid role")
+// 	}
+// 	return
+// }
+
+func (server *RegisterServer) Register(ctx context.Context, input *pb.UserDetailes) (*pb.RegisteredUser, error) {
+	var newUser models.User
+	// newUser = { }
+	// here I should use get methods in auth.pb.go to add details to newUser
+	output := DB.Create(&newUser)
+	if errors.Is(output.Error, gorm.ErrInvalidData) {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid data has been entered")
+	}
+
+	if errors.Is(output.Error, gorm.ErrInvalidTransaction) {
+		return nil, status.Errorf(codes.Aborted, "invalid transaction") // is Abroted correct?
+	}
+
+	if errors.Is(output.Error, gorm.ErrRegistered) {
+		return nil, status.Errorf(codes.AlreadyExists, "this user is already registerd")
+
+	}
+
+	return newUser, nil
+}
+
 func main() {
-	authServer := AuthServer{}
-
-	// start REST server
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	mux := runtime.NewServeMux()
-	_ = pb.RegisterAuthHandlerServer(ctx, mux, &authServer)
-
-	log.Println("server REST started in localhost:9090 (Wait 60 second before making http requests) ...")
-	go http.ListenAndServe(":9090", mux)
-	// end of REST server
-
-	// start gRPC server
 	listener, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -161,13 +179,13 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 
-	pb.RegisterAuthServer(grpcServer, &authServer)
+	pb.RegisterAuthServer(grpcServer, &AuthServer{})
+	pb.RegisterRegisterServer(grpcServer, &RegisterServer{})
 	reflection.Register(grpcServer)
 
-	log.Println("server gRPC is starting in localhost:50051 ...")
 	err = grpcServer.Serve(listener)
+
 	if err != nil {
 		log.Fatal("cannot start server: ", err)
 	}
-	// end of gRPC server
 }

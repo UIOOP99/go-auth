@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package auth;
 
-import "google/api/annotations.proto";
-
 option go_package = ".;pb";
 
 message Credentials {
@@ -15,11 +13,35 @@ message Token {
   string access = 1;
 }
 
+message UserDetailes {
+  string FirstName = 1;
+  string LastName = 2;
+  string Email = 3;
+  string Username = 4;
+  string Password = 5;
+  string Gender = 6;
+}
+
+message RegisteredUser {
+  uint32 ID = 1;
+  string FirstName = 2;
+  string LastName = 3;
+  string Email = 4;
+  string Username = 5;
+  string Gender = 6;
+  bool IsActive = 7;
+}
+
 service Auth {
-  rpc Login(Credentials) returns (Token) {
-    option (google.api.http) = {
-      post: "/login"
-      body: "*"
-    };
+  rpc Login(Credentials) returns (Token) {};
+}
+
+service Register {
+  rpc Signup (UserDetailes) returns (RegisteredUser) {
+    // option (google.api.http.proto) = {
+    //   post: "/signup"
+    //   body: "*"
+    // };
   }
 }
+
